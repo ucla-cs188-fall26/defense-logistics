@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+data/leakdb/raw/*.zip
+
+ui/.next/
+ui/node_modules/
+node_modules/
+
+# generated outputs
+claims.json
+corruption_log.json
