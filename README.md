@@ -1,6 +1,6 @@
 # defense-logistics
 
-Operational observability for defense resource networks, adapted from [ORB](https://github.com/alephnull07/Orb).
+Operational observability for defense resource networks
 
 Logistics reports from people, sensors, and warehouses are messy, stale, duplicated, or wrong. This project turns those reports into one view of the network: what the recovered state is, which reports are inconsistent, and when there is not enough information to know.
 
