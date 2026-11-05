@@ -1,6 +1,6 @@
 # defense-logistics
 
-Operational observability for defense resource networks
+Operational Observability for Defense Resource Networks
 
 Logistics reports from people, sensors, and warehouses are messy, stale, duplicated, or wrong. This project turns those reports into one view of the network: what the recovered state is, which reports are inconsistent, and when there is not enough information to know.
 
