@@ -1,0 +1,11 @@
+RADIO LOG -- WATER (CASES) -- 15 NOV
+
+0600 DEPOT: start of day, depot holding 500 cases.
+0700 DEPOT: two trucks out. Truck 1 to Base Alpha with 120. Truck 2 to Bravo carrying 90.
+0930 BASE_A: Alpha here, truck 1 in, 120 received. We're at 160 on hand.
+0950 BASE_B: got the 90 from the depot. Bravo count is 130.
+1200 BASE_A: pushed cases forward to the posts -- POST_1 and POST_2 got 100 between them.
+1400 POST_1: have 60 on hand.
+1430 POST_2: 40 on the ground here.
+1600 DEPOT: CORRECTION to 0700 -- truck 1 actually left with 125, not 120. Manifest count error.
+1700 BASE_B: sent 20 cases back to DEPOT, those were the wrong lot.

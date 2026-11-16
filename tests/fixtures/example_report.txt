@@ -1,0 +1,15 @@
+DAILY LOGISTICS ROLLUP -- FUEL (DRUMS) -- 14 NOV
+
+[0610] DEPOT duty officer (SGT Price): morning count at DEPOT is 740 drums on hand.
+[0645] DEPOT dispatch: Convoy 3 departed DEPOT for BASE_A carrying 80 drums. Driver CPL Ruiz.
+[0650] DEPOT dispatch: Convoy 4 departed DEPOT for BASE_B with 60 drums. Driver PFC Okafor.
+[0920] BASE_A receiving (SPC Lee): Convoy 3 arrived. Counted 80 drums off the truck, signed for.
+[0935] BASE_B receiving (SGT Dunn): Convoy 4 in. We received 58 drums -- two came in dented and
+       were rejected at the gate. Driver insists he loaded 60 at DEPOT.
+[1100] BASE_A CO: stock at BASE_A is now 185 drums.
+[1115] BASE_B CO: BASE_B holding 100 drums.
+[1300] BASE_A dispatch: LMTV left BASE_A for POST_1 with 45 drums. Driver CPL Ruiz (second run).
+[1310] BASE_A dispatch: sent 30 drums from BASE_A to POST_2 by trailer.
+[1545] POST_1: received 45 drums from BASE_A. POST_1 on hand: 105 drums.
+[1600] POST_2: took delivery of 30 drums from BASE_A. Count at POST_2 is 60.
+[1700] DEPOT dispatch: convoy to BASE_C is planned for tomorrow. No movement to BASE_C today.

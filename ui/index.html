@@ -1,0 +1,250 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ORB graph builder</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#2a2f3a; --text:#e6e8ee; --dim:#8b93a5;
+          --accent:#6fa8dc; --ok:#9fd3a0; --warn:#f0c674; --bad:#e06c75; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; font:14px system-ui,sans-serif; background:var(--bg); color:var(--text); }
+  h1 { font-size:17px; font-weight:600; margin:0 0 12px; }
+  h1 span { color:var(--dim); font-weight:400; margin-left:8px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+  .panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 8px; }
+
+  #drop { flex:1 1 320px; min-width:280px; border:2px dashed var(--line); text-align:center; cursor:pointer; }
+  #drop.over { border-color:var(--accent); }
+  #drop p { margin:6px 0; color:var(--dim); }
+  #files { text-align:left; margin:8px 0 0; padding-left:18px; color:var(--text); }
+  button { background:var(--accent); color:#0b1320; border:0; border-radius:6px; padding:8px 14px; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.4; cursor:default; }
+
+  #pipeline { flex:2 1 480px; display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .stage { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px; min-height:92px; }
+  .stage .name { font-weight:600; }
+  .stage .status { color:var(--dim); font-size:12px; margin:4px 0; }
+  .stage .counts { font-size:12px; color:var(--ok); white-space:pre; }
+  .stage.running { border-color:var(--warn); }
+  .stage.done { border-color:var(--ok); }
+  .stage.failed { border-color:var(--bad); }
+  .stage.running .status::after { content:" …"; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity:.2; } }
+
+  svg { width:100%; height:62vh; background:var(--bg); border:1px solid var(--line); border-radius:6px; }
+  .node rect { fill:#243b55; stroke:var(--accent); stroke-width:1.5; rx:6; transition: all .5s; }
+  .node text { fill:var(--text); text-anchor:middle; }
+  .node .stock { fill:var(--ok); font-size:12px; }
+  .node.ghost rect { fill:transparent; stroke:var(--dim); stroke-dasharray:4 3; }
+  .node.ghost text { fill:var(--dim); }
+  .edge line { stroke:#8b93a5; stroke-width:1.5; marker-end:url(#arrow); }
+  .edge.ghost line { stroke-dasharray:4 3; opacity:.5; }
+  .edge text { fill:var(--warn); font-size:12px; text-anchor:middle; }
+  .votes { fill:var(--dim); font-size:10px; }
+  .fade-in { animation: pop .4s ease-out; }
+  @keyframes pop { from { opacity:0; transform:scale(.8); } }
+
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { text-align:left; padding:4px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:500; }
+  #log { font:12px ui-monospace,monospace; color:var(--dim); max-height:160px; overflow:auto; white-space:pre-wrap; }
+  .dropped { color:var(--bad); }
+</style>
+
+<h1>ORB graph builder <span>upload reports → Scout / Receiver / Auditor → majority consensus → graph</span></h1>
+
+<div class="row" style="margin-bottom:12px">
+  <div id="drop" class="panel">
+    <h2>1. Ingest</h2>
+    <p>Drop report files here or click to choose (.txt, .md, .log)</p>
+    <input type="file" id="pick" multiple hidden>
+    <ul id="files"></ul>
+    <button id="go" disabled>Build graph</button>
+  </div>
+  <div class="panel" style="flex:2 1 480px">
+    <h2>2. Pipeline</h2>
+    <div id="pipeline">
+      <div class="stage" id="st-scout"><div class="name">Scout</div><div class="status">idle</div><div class="counts"></div></div>
+      <div class="stage" id="st-receiver"><div class="name">Receiver</div><div class="status">idle</div><div class="counts"></div></div>
+      <div class="stage" id="st-auditor"><div class="name">Auditor</div><div class="status">idle</div><div class="counts"></div></div>
+      <div class="stage" id="st-merge"><div class="name">Consensus</div><div class="status">idle</div><div class="counts"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:12px">
+  <h2>3. Graph <span id="summary" style="text-transform:none;letter-spacing:0"></span></h2>
+  <svg id="svg" viewBox="0 0 1000 560">
+    <defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8b93a5"/></marker></defs>
+  </svg>
+</div>
+
+<div class="row">
+  <div class="panel" style="flex:2 1 480px"><h2>Claims</h2>
+    <table><thead><tr><th>id</th><th>type</th><th>ref</th><th>value</th><th>source</th></tr></thead><tbody id="claims"></tbody></table>
+    <div id="dropped"></div>
+  </div>
+  <div class="panel" style="flex:1 1 300px"><h2>Log</h2><div id="log"></div></div>
+</div>
+
+<script>
+// ── state ──────────────────────────────────────────────────────────────────
+const AGENTS = ['scout', 'receiver', 'auditor'];
+let picked = [];
+let proposals = {};        // agent -> extraction (sites, stocks, transfers)
+let finalGraph = null;
+
+const $ = id => document.getElementById(id);
+const norm = s => s.trim().toUpperCase().replace(/ /g, '_');
+const log = msg => { $('log').textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`; $('log').scrollTop = 1e9; };
+
+// ── file picking ───────────────────────────────────────────────────────────
+const drop = $('drop');
+drop.addEventListener('click', e => { if (e.target.tagName !== 'BUTTON') $('pick').click(); });
+$('pick').addEventListener('change', e => setFiles([...e.target.files]));
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); setFiles([...e.dataTransfer.files]); });
+function setFiles(fs) {
+  picked = fs;
+  $('files').innerHTML = fs.map(f => `<li>${f.name} <span style="color:var(--dim)">(${f.size} B)</span></li>`).join('');
+  $('go').disabled = !fs.length;
+}
+
+// ── build ──────────────────────────────────────────────────────────────────
+$('go').addEventListener('click', async () => {
+  reset();
+  const fd = new FormData();
+  picked.forEach(f => fd.append('files', f));
+  $('go').disabled = true;
+  log(`uploading ${picked.length} file(s)`);
+  const res = await fetch('/build', { method: 'POST', body: fd });
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) { handle(JSON.parse(buf.slice(0, i))); buf = buf.slice(i + 1); }
+  }
+  $('go').disabled = false;
+});
+
+function reset() {
+  proposals = {}; finalGraph = null;
+  AGENTS.concat('merge').forEach(a => setStage(a, '', 'idle', ''));
+  $('claims').innerHTML = ''; $('dropped').textContent = ''; $('summary').textContent = '';
+  draw();
+}
+
+function setStage(name, cls, status, counts) {
+  const el = $('st-' + name); el.className = 'stage ' + cls;
+  el.querySelector('.status').textContent = status;
+  el.querySelector('.counts').textContent = counts;
+}
+
+function handle(ev) {
+  switch (ev.event) {
+    case 'received':
+      log(`server received ${ev.files.join(', ')} (${ev.chars} chars)`); break;
+    case 'agent_start':
+      setStage(ev.agent, 'running', 'reading report'); log(`${ev.agent} started`); break;
+    case 'agent_done': {
+      const x = ev.extraction; proposals[ev.agent] = x;
+      setStage(ev.agent, 'done', `done in ${ev.seconds}s`,
+        `${x.sites.length} sites\n${x.stocks.length} stock claims\n${x.transfers.length} transfers`);
+      log(`${ev.agent} proposed ${x.sites.length} sites, ${x.transfers.length} transfers`);
+      if (Object.keys(proposals).length === AGENTS.length) setStage('merge', 'running', 'voting');
+      draw(); break;
+    }
+    case 'agent_error':
+      setStage(ev.agent, 'failed', 'failed'); log(`agent error: ${ev.error}`); break;
+    case 'merged':
+      finalGraph = ev.graph;
+      setStage('merge', 'done', 'majority merged',
+        `${ev.graph.nodes.length} nodes\n${ev.graph.edges.length} edges\n${ev.graph.claims.length} claims kept\n${ev.graph.dropped.length} dropped`);
+      log(`consensus: ${ev.graph.nodes.length} nodes, ${ev.graph.edges.length} edges, ${ev.graph.claims.length} claims, ${ev.graph.dropped.length} dropped`);
+      showClaims(ev.graph); draw(); break;
+    case 'error':
+      setStage('merge', 'failed', 'failed'); log(`build error: ${ev.error}`); break;
+    case 'done':
+      log('done'); break;
+  }
+}
+
+// ── claims table ───────────────────────────────────────────────────────────
+function showClaims(g) {
+  $('claims').innerHTML = g.claims.map(c =>
+    `<tr><td>${c.id}</td><td>${c.type}</td><td>${c.ref}</td><td>${c.value}</td><td>${c.source}</td></tr>`).join('');
+  if (g.dropped.length)
+    $('dropped').innerHTML = `<p class="dropped">Dropped (only one agent saw it): ${g.dropped.map(d => JSON.stringify(d)).join(' · ')}</p>`;
+}
+
+// ── drawing ────────────────────────────────────────────────────────────────
+// Before consensus: draw the union of what agents proposed, ghosted, with vote counts.
+// After consensus: draw the merged graph solid, ghosts removed.
+function draw() {
+  const svg = $('svg');
+  svg.querySelectorAll('g').forEach(g => g.remove());
+
+  let nodes, edges, stock = {}, flow = {}, nodeVotes = {}, edgeVotes = {};
+  if (finalGraph) {
+    nodes = finalGraph.nodes.map(n => n.id);
+    edges = finalGraph.edges.map(e => [e.from, e.to, e.id]);
+    for (const c of finalGraph.claims) (c.type === 'node' ? stock : flow)[c.ref] ??= [], (c.type === 'node' ? stock : flow)[c.ref].push(c.value);
+    $('summary').textContent = `— ${nodes.length} nodes, ${edges.length} edges`;
+  } else {
+    for (const x of Object.values(proposals)) {
+      new Set(x.sites.map(norm)).forEach(s => nodeVotes[s] = (nodeVotes[s] || 0) + 1);
+      new Set(x.transfers.map(t => norm(t.from_site) + '>' + norm(t.to_site))).forEach(k => edgeVotes[k] = (edgeVotes[k] || 0) + 1);
+    }
+    nodes = Object.keys(nodeVotes).sort();
+    edges = Object.keys(edgeVotes).map(k => { const [a, b] = k.split('>'); return [a, b, k]; });
+    const n = Object.keys(proposals).length;
+    $('summary').textContent = n ? `— proposals from ${n}/${AGENTS.length} agents (dashed = not yet a majority)` : '';
+  }
+  if (!nodes.length) return;
+
+  // layered layout from roots
+  const incoming = Object.fromEntries(nodes.map(id => [id, 0]));
+  edges.forEach(([a, b]) => { if (b in incoming) incoming[b]++; });
+  const depth = {}; let frontier = nodes.filter(id => incoming[id] === 0);
+  if (!frontier.length) frontier = nodes.slice(0, 1);
+  frontier.forEach(id => depth[id] = 0);
+  while (frontier.length) {
+    const next = [];
+    for (const id of frontier) for (const [a, b] of edges) if (a === id && depth[b] === undefined) { depth[b] = depth[id] + 1; next.push(b); }
+    frontier = next;
+  }
+  nodes.forEach(id => { if (depth[id] === undefined) depth[id] = 0; });
+  const layers = {}; nodes.forEach(id => (layers[depth[id]] ||= []).push(id));
+  const nL = Object.keys(layers).length, pos = {};
+  Object.entries(layers).forEach(([d, m]) => m.forEach((id, i) => {
+    pos[id] = { x: 100 + (+d) * (800 / Math.max(nL - 1, 1)), y: 280 + (i - (m.length - 1) / 2) * 110 };
+  }));
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const el = (t, a, txt) => { const e = document.createElementNS(ns, t); for (const k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; return e; };
+
+  for (const [a, b, key] of edges) {
+    const p = pos[a], q = pos[b]; if (!p || !q) continue;
+    const ghost = !finalGraph && (edgeVotes[key] || 0) < 2;
+    const g = el('g', { class: 'edge fade-in' + (ghost ? ' ghost' : '') });
+    const dx = q.x - p.x, dy = q.y - p.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+    g.append(el('line', { x1: p.x + ux * 55, y1: p.y + uy * 28, x2: q.x - ux * 55, y2: q.y - uy * 28 }));
+    const label = finalGraph ? (flow[key] || []).join(' / ') : `${edgeVotes[key]}/${AGENTS.length} votes`;
+    g.append(el('text', { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 - 6, class: finalGraph ? '' : 'votes' }, label));
+    svg.append(g);
+  }
+  for (const id of nodes) {
+    const p = pos[id], ghost = !finalGraph && (nodeVotes[id] || 0) < 2;
+    const g = el('g', { class: 'node fade-in' + (ghost ? ' ghost' : '') });
+    g.append(el('rect', { x: p.x - 50, y: p.y - 24, width: 100, height: 48 }));
+    g.append(el('text', { x: p.x, y: p.y - 4 }, id));
+    const sub = finalGraph ? (stock[id] ? 'stock ' + stock[id].join(' / ') : '—') : `${nodeVotes[id]}/${AGENTS.length} votes`;
+    g.append(el('text', { x: p.x, y: p.y + 14, class: finalGraph ? 'stock' : 'votes' }, sub));
+    svg.append(g);
+  }
+}
+</script>

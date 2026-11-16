@@ -1,5 +1,7 @@
 numpy
 scipy
+anthropic       # LLM extractors in graph_builder.py
+python-dotenv   # loads ANTHROPIC_API_KEY from .env
 openpyxl        # .xlsx input
 pytest          # test suite
 playwright      # optional: docs/build_architecture.py renders the diagram
